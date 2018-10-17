@@ -7,12 +7,14 @@
 // Private Libraries...
 #include <Data.h>
 #include <Console.h>
+#include <Exception.h>
 
-#define TIMEOUT 5000
+#define MAX_TIMEOUT 5000
 
 RF24 wireless(7, 8); // CE, CSN
 
 Console console;
+Exception exception;
 Data data;
 typedef struct Data dataType;
 
@@ -48,6 +50,7 @@ void initialization()
 {
     // Console configuration...
     configConsole();
+    exception.config(console);
 
     // Modules initialization...
     WiFi.begin(ssid, password);
@@ -62,7 +65,7 @@ void initialization()
     }
 
     // WiFi configuration...
-    int max_time = millis() + TIMEOUT;
+    int max_time = millis() + MAX_TIMEOUT;
     while (WiFi.status() != WL_CONNECTED)
     {
         if (max_time <= millis()) ESP.restart();
@@ -71,6 +74,7 @@ void initialization()
     }
 
     console.changeFunctionState(fct1);
+    console.sendMain();
 }
 
 bool sendValues()
@@ -79,7 +83,7 @@ bool sendValues()
     if (data.miss()) return false;
 
     // Send data values...
-    int max_time = millis() + TIMEOUT;
+    int max_time = millis() + MAX_TIMEOUT;
     while (!wireless.write(&data, sizeof(dataType)))
     {
         // Timeout...
@@ -97,11 +101,7 @@ String sendData(String url)
     String error_prefix = "Falha em conexao: ";
 
     // Check host connection...
-    if (!client.connect(host, 80))
-    {
-        console.sendMessage(error_prefix + "Impossivel conectar com HOST.");
-        return "Erro 01";
-    }
+    if (!client.connect(host, 80)) exception.launch(CONNECTION, "HOST");
 
     // Client content...
     client.print(
@@ -117,16 +117,15 @@ String sendData(String url)
     while (client.available() == 0)
     {
         // Timeout...
-        if (millis() - time > TIMEOUT)
+        if (millis() - time > MAX_TIMEOUT)
         {
-            console.sendMessage(error_prefix + "Timeout");
             client.stop();
-            return "Erro 02";
+            exception.launch(TIMEOUT);
         }
     }
 
     // Check IP...
-    if (console.inDebug()) console.sendMessage(String("IP: " + WiFi.localIP()));
+    if (console.inDebug()) console.sendMessage("IP: " + String(WiFi.localIP()));
 
     // Saving response from client...
     while (client.available())
